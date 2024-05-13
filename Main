@@ -1,0 +1,168 @@
+from calendar import c
+import requests 
+from bs4 import BeautifulSoup
+from googletrans import Translator, constants
+import re
+import os 
+from PIL import Image
+import csv
+import threading
+
+
+translator = Translator()
+with open("brands.txt", "r+", encoding="utf-8") as f:
+    brand = f.readlines()
+
+products = []
+feilds = ['Tittle', 'Description','availability', 'Brand', 'cat1', 'cat2', 'cat3','cat4',' price', 'Image',"url"]
+
+def get_brands_products():
+    counter = 1
+
+    for b in brand:
+        product = requests.get(b.strip(), redirect=True).text
+        soup = BeautifulSoup(product, "lxml")
+        Brand_Name = soup.find("meta", property="og:description")
+        Brand_Name_Eng = re.findall('\s+?\|+?\s+?([\s\S]+)', str(Brand_Name['content']))
+        print(Brand_Name_Eng)
+        if len(Brand_Name_Eng) > 0:
+            Brand_Name_Eng1 = Brand_Name_Eng[0]
+            info =  soup.find_all('a', href=True,  rel='canonical')
+            with open(f"Products_URL/{Brand_Name_Eng1}.txt", "w+", encoding="utf-8") as w:
+                for i in info:
+                    product_url = re.findall('href="+?([\s\S]+?)"+?\s+?rel="canonical"+?', str(i))
+                    w.write(product_url[0])
+                    w.write("\n")
+        
+        else:
+            counter += 1 
+            info =  soup.find_all('a', href=True,  rel='canonical')
+            with open(f"Products_URL/{counter}.txt", "w+", encoding="utf-8") as w:
+                for i in info:
+                    product_url = re.findall('href="+?([\s\S]+?)"+?\s+?rel="canonical"+?', str(i))
+                    w.write(product_url[0])
+                    w.write("\n")
+     
+
+
+        
+
+#Scrap products
+#> breadcrumbs for quantity 
+#> Tittle
+#> Image > compress image size and resoultion 
+#> price without tax 
+#> description
+
+
+
+def getproducts():
+    counterz = 1
+    brands = os.listdir("Desktop\\Codes\\Cheeryone\\Products_URL")
+    for b in brands:
+        clean_b = re.findall('([\s\S]+?)\.txt+?', str(b))
+        clean_b_ = clean_b[0]
+        with open(f"Products_URL/{b}", "r+", encoding="utf-8") as ur:
+            product_url = ur.readlines()
+            len_pro = len(product_url)
+            print(f"{len_pro} are in the file {b}")
+        for _ in range(len(product_url)):
+            url = product_url.pop(-1)
+            print(url.strip())
+            with open(f"Products_URL/{b}", "w+", encoding="utf-8") as ff:
+                for pr in product_url:
+                    ff.write(pr)
+            try:
+                res =  requests.get(url.strip()).text
+                soup = BeautifulSoup(res, 'lxml')
+                Get_tittle = soup.find("meta", property="og:title")
+                Tittle_EN = translator.translate(Get_tittle['content']).text
+            
+
+                Get_description = soup.find("meta", property="og:description")
+                description_en = translator.translate(Get_description['content']).text
+
+                get_pre_tax_price = soup.find("meta", property="product:pretax_price:amount")
+                #pre_tax_price_en = translator.translate(get_pre_tax_price['content']).text
+                price= get_pre_tax_price['content']
+
+                Get_availability = soup.find("meta", property="product:availability")
+                #availability_EN = translator.translate(Get_tittle['content']).text
+                availability_EN = Get_availability['content']
+                
+                crumbs = soup.find_all(class_="breadcrumb-item")
+                category = []
+                for crumb in crumbs[1:len(crumbs)-1]:
+                    category_clean = re.findall('/category/+?[\s\S]+?">+?([\s\S]+?)</a>+?', str(crumb))
+                    category.append(translator.translate(category_clean[0]).text)
+                
+                get_image= soup.find("meta", property="og:image")
+                img_data = requests.get(get_image['content']).content
+                try:
+                    with open(f'Images/{Tittle_EN}-{clean_b_}.jpg', 'wb') as handler:
+                        handler.write(img_data)
+                    
+                    image = Image.open(f'Images/{Tittle_EN}-{clean_b_}.jpg')
+                    new_image = image.resize((600, 500))
+                    rgb_im = new_image.convert('RGB')
+                    rgb_im.save(f'Images/{Tittle_EN}-{clean_b_}.jpg')
+
+                except:
+                    with open(f'Images/{counterz}{clean_b_}.jpg', 'wb') as handler:
+                        handler.write(img_data)
+
+                    image = Image.open(f'Images/{counterz}{clean_b_}.jpg')
+                    new_image = image.resize((600, 500))
+                    rgb_im = new_image.convert('RGB')
+                    rgb_im.save(f'Images/{counterz}{clean_b_}.jpg')
+                    counterz =+ 1
+
+            
+
+                if len(category) == 4 :
+                    #print(len(category))
+                    cat1,cat2, cat3, cat4= category
+                    data_to_append = [Tittle_EN, description_en,availability_EN, clean_b_, cat1, cat2, cat3,cat4, price  ,f'{Tittle_EN}.png', url.strip()]
+                    products.append(data_to_append)
+                
+                if len(category) == 3 :
+                    #print(len(category))
+                    cat1,cat2, cat3= category
+                    cat4 = ""
+                    data_to_append = [Tittle_EN, description_en,availability_EN, clean_b_, cat1, cat2, cat3,cat4, price  ,f'{Tittle_EN}.png', url.strip()]
+                    products.append(data_to_append)
+                if len(category) == 2 :
+                    #print(len(category))
+                    cat1,cat2 = category
+                    cat3 = ""
+                    cat4 = ""
+                    data_to_append = [Tittle_EN, description_en,availability_EN, clean_b_, cat1, cat2, cat3,cat4, price  ,f'{Tittle_EN}.png', url.strip()]
+                    products.append(data_to_append)
+                print(category)
+                print(Tittle_EN)   
+                print(description_en)
+                print(price)
+                print(availability_EN)
+                if len(product_url) == 0:
+                    os.remove(f"Products_URL/{b}")
+                else:
+                    print("Product left: " + str(len(product_url)) + " in file " + str(b))
+                    #print(product_url)
+            except:
+                if len(product_url) == 0:
+                    os.remove(f"Products_URL/{b}")
+                else:
+                    print("Product left: " + str(len(product_url)) + " in file " + str(b))
+                    #print(product_url)
+    
+            with open('data.csv', 'a',  encoding='utf-8-sig') as f: 
+                write = csv.writer(f) 
+                #write.writerow(feilds) 
+                write.writerows(products)
+                products.clear()
+   
+            
+getproducts()
+
+
+
